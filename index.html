@@ -247,8 +247,9 @@ function shadeFoldColors(pos, dValues, shadeScale) {
 }
 
 function buildCerebrum() {
-  const geo = new THREE.SphereGeometry(2.6, 96, 72); // higher resolution supports the finer fold passes below
-  geo.scale(1.5, 1.05, 0.85); // elongate front-to-back (+x = front, -x = back), squash depth for a side-profile read
+  const geo = new THREE.SphereGeometry(2.6, 128, 96); // higher resolution supports the finer fold passes below
+  geo.scale(1.22, 1.02, 0.98); // much closer to spherical (was 1.5/1.05/0.85) — a real cerebrum reads as a
+  // rounded mass with mass/weight to it, not a flattened, elongated loaf
   const pos = geo.attributes.position;
   const v = new THREE.Vector3();
   const dValues = new Float32Array(pos.count);
@@ -257,16 +258,25 @@ function buildCerebrum() {
     v.fromBufferAttribute(pos, i);
     const len = v.length() || 1;
     const nx = v.x / len, ny = v.y / len, nz = v.z / len;
+
+    // domain warp: perturb the coordinates each fold pass reads from with a low-frequency
+    // sine field before evaluating the higher-frequency ridge passes. Un-warped layered sine
+    // waves stay perfectly periodic and read as "waves on a ball"; warping breaks that
+    // periodicity so ridges wander, branch, and terminate irregularly like real gyri.
+    const wx = v.x + Math.sin(v.y * 0.85 + v.z * 0.65) * 0.55;
+    const wy = v.y + Math.sin(v.z * 0.75 - v.x * 0.6) * 0.55;
+    const wz = v.z + Math.sin(v.x * 0.8 + v.y * 0.55) * 0.55;
+
     // base layered sine/cosine passes suggest overlapping cortex folds (gyri/sulci) —
-    // lower frequency + higher amplitude than before, for fewer, thicker, more legible ridges
-    const fold1 = Math.sin(v.x * 1.7 + v.y * 2.3) * Math.cos(v.z * 2.1) * 0.17;
-    const fold2 = Math.sin(v.y * 3.4 - v.z * 2.6 + v.x * 1.3) * 0.11;
+    // amplitudes raised substantially over the old flat-wave version for real depth
+    const fold1 = Math.sin(wx * 1.7 + wy * 2.3) * Math.cos(wz * 2.1) * 0.32;
+    const fold2 = Math.sin(wy * 3.4 - wz * 2.6 + wx * 1.3) * 0.22;
     // two extra higher-frequency, lower-amplitude passes add finer overlapping ridges on top
     // of the base folds, for a denser, more organic surface without changing the overall shape
-    const fold3 = Math.sin(v.x * 5.3 - v.y * 4.7 + v.z * 3.9) * 0.045;
-    const fold4 = Math.cos(v.z * 6.4 + v.x * 3.4) * Math.sin(v.y * 5.5) * 0.035;
+    const fold3 = Math.sin(wx * 5.3 - wy * 4.7 + wz * 3.9) * 0.09;
+    const fold4 = Math.cos(wz * 6.4 + wx * 3.4) * Math.sin(wy * 5.5) * 0.07;
     // a deeper centered crease along the top, loosely like the longitudinal fissure
-    const groove = -Math.exp(-(v.z * v.z) / 0.4) * Math.max(v.y, 0) * 0.22;
+    const groove = -Math.exp(-(v.z * v.z) / 0.4) * Math.max(v.y, 0) * 0.32;
 
     // lateral sulcus: a diagonal crease running down the front-lower side of the cortex,
     // with a bulge just below it to pop out a distinct temporal lobe (the reference image's
@@ -276,19 +286,20 @@ function buildCerebrum() {
     const across = -nx * Math.sin(sylvianAngle) + ny * Math.cos(sylvianAngle);
     const fissureRun = THREE.MathUtils.smoothstep(along, -0.95, -0.35) *
       (1 - THREE.MathUtils.smoothstep(along, 0.15, 0.55));
-    const sylvianFissure = -Math.exp(-((across - 0.02) ** 2) / 0.014) * fissureRun * 0.3;
-    const temporalLobeBulge = Math.exp(-((across - 0.26) ** 2) / 0.045) * fissureRun * 0.21;
+    const sylvianFissure = -Math.exp(-((across - 0.02) ** 2) / 0.014) * fissureRun * 0.4;
+    const temporalLobeBulge = Math.exp(-((across - 0.26) ** 2) / 0.045) * fissureRun * 0.28;
 
     let d = fold1 + fold2 + fold3 + fold4 + groove + sylvianFissure + temporalLobeBulge;
-    // sharpen creases relative to ridges: deepen negative displacement more than positive,
-    // so gyri read as rounded flat-topped ridges separated by narrow deep sulci (rope-like),
-    // instead of the smoother, all-over ripple look of symmetric sine noise
-    d = d >= 0 ? d * 0.9 : d * 1.55;
+    // asymmetric power-shaping (not just a linear multiplier): ridges get compressed toward a
+    // plateau (pow < 1 on a value already < 1 pulls it up, then the 0.85 scale rounds it off),
+    // while sulci get sharpened into narrow, deep, dark cuts (pow > 1 concentrates the drop near
+    // the deepest point). This is what makes folds look carved rather than like smooth ripples.
+    d = d >= 0 ? Math.pow(d, 0.75) * 0.85 : -Math.pow(-d, 1.4) * 1.9;
 
     pos.setXYZ(i, v.x + nx * d, v.y + ny * d, v.z + nz * d);
     dValues[i] = d;
   }
-  geo.setAttribute("color", new THREE.BufferAttribute(shadeFoldColors(pos, dValues, 0.25), 3));
+  geo.setAttribute("color", new THREE.BufferAttribute(shadeFoldColors(pos, dValues, 0.45), 3));
   geo.computeVertexNormals();
   return new THREE.Mesh(geo, brainMaterial());
 }
@@ -324,7 +335,9 @@ function buildCerebellum() {
   // verified against the live scene camera, not just the base ellipsoid math, since the fold
   // noise/silhouette make "outside the surface" hard to eyeball from the equation alone
   mesh.scale.set(1.5, 1.5, 1.5);
-  mesh.position.set(-2.15, -2.05, 0.75);
+  // position rescaled to match the cerebrum's new, rounder proportions (was tuned against the
+  // old 1.5/1.05/0.85 elongated scale) — keeps the same relative nestled-at-the-back placement
+  mesh.position.set(-1.75, -2.0, 0.85);
   return mesh;
 }
 
@@ -340,7 +353,8 @@ function buildBrainstem() {
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.scale.set(1.6, 1.6, 1.6);
-  mesh.position.set(-1.6, -2.75, 0.5);
+  // position rescaled to match the cerebrum's new, rounder proportions (see buildCerebellum)
+  mesh.position.set(-1.3, -2.67, 0.58);
   mesh.rotation.z = 0.12; // slight forward lean, matching the reference image's stem angle
   return mesh;
 }
@@ -377,48 +391,208 @@ scene.add(brainLight);
 const synapseGroup = new THREE.Group();
 scene.add(synapseGroup);
 
-/* ---------- Membranes ---------- */
+/* ---------- Synaptic terminal "cups" ---------- */
+// Modeled on ref-images/synaptic-transmission.png: cross-sectioned bulbous terminal buttons
+// (flesh outer shell + cream inner cavity wall, open toward the gap) instead of the old flat
+// bulging slabs. See docs/synapse-visual-rebuild.md for the full reference-element map.
 
 const GAP_HALF_WIDTH = 6;
+const CUP_OUTER_R = 2.3;
+const CUP_INNER_R = 2.0;
+const CUP_THETA_START = 0.85; // polar angle (from the mouth pole) where the open cap starts — smaller = wider mouth
 
-function makeMembrane(color) {
-  const group = new THREE.Group();
-  const geo = new THREE.BoxGeometry(1.4, 8, 8, 1, 12, 12);
-  // bulge the membrane slightly for an organic feel
+// cosine-bulge displacement + normal recompute, same idiom as the old makeMembrane()/buildCerebrum()
+function bulgeShell(geo, amp) {
   const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    const bulge = Math.cos((y / 8) * Math.PI * 0.9) * Math.cos((z / 8) * Math.PI * 0.9);
-    pos.setX(i, pos.getX(i) + bulge * 0.5);
+    v.fromBufferAttribute(pos, i);
+    const len = v.length() || 1;
+    const bulge = Math.sin(v.x * 2.3 + v.y * 1.7) * Math.cos(v.z * 2.1) * amp;
+    pos.setXYZ(i, v.x + (v.x / len) * bulge, v.y + (v.y / len) * bulge, v.z + (v.z / len) * bulge);
   }
   geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.55,
-    metalness: 0.1,
-    emissive: color,
+}
+
+// openSign: +1 = mouth opens toward local +X (presynaptic, facing the gap from the left),
+// -1 = mouth opens toward local -X (postsynaptic, facing the gap from the right). A sphere's
+// poles sit on Y by default; thetaStart/thetaLength carve the open cap at the +Y pole, then
+// rotateZ(-openSign * PI/2) swings that pole onto the +X or -X axis — this rotation is baked
+// into the geometry buffers, so any child object added to the returned group afterward can use
+// local +X/-X as "toward/away from the mouth" directly, no extra transform needed.
+function buildCup(openSign, rimColor) {
+  const group = new THREE.Group();
+
+  const outerGeo = new THREE.SphereGeometry(CUP_OUTER_R, 40, 30, 0, Math.PI * 2, CUP_THETA_START, Math.PI - CUP_THETA_START);
+  bulgeShell(outerGeo, 0.1);
+  outerGeo.rotateZ(-openSign * Math.PI / 2);
+  const outerMat = new THREE.MeshStandardMaterial({
+    color: 0xd9a89a,
+    roughness: 0.6,
+    metalness: 0.02,
+    emissive: 0xaa6b5e,
     emissiveIntensity: 0.08,
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  group.add(mesh);
+  const outerMesh = new THREE.Mesh(outerGeo, outerMat);
+  group.add(outerMesh);
+
+  // inner cream wall: the visible cross-section cavity. DoubleSide until verified, per the
+  // plan's gotcha list — theta-cut normals can end up pointing the "wrong" way depending on
+  // the pole rotation, and this is cheap insurance against a wall that renders invisible.
+  const innerGeo = new THREE.SphereGeometry(CUP_INNER_R, 36, 28, 0, Math.PI * 2, CUP_THETA_START, Math.PI - CUP_THETA_START);
+  bulgeShell(innerGeo, 0.06);
+  innerGeo.rotateZ(-openSign * Math.PI / 2);
+  const innerMat = new THREE.MeshStandardMaterial({
+    color: 0xe8d9b8,
+    roughness: 0.7,
+    metalness: 0.02,
+    emissive: 0xc2a876,
+    emissiveIntensity: 0.06,
+    side: THREE.DoubleSide,
+  });
+  const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+  group.add(innerMesh);
+
+  // rim torus closes the seam between the outer/inner shells' open edges (their edge circles
+  // differ in both radius and depth, so this is an approximate bridge — tune visually)
+  const outerRimX = openSign * CUP_OUTER_R * Math.cos(CUP_THETA_START);
+  const outerRimR = CUP_OUTER_R * Math.sin(CUP_THETA_START);
+  const innerRimX = openSign * CUP_INNER_R * Math.cos(CUP_THETA_START);
+  const innerRimR = CUP_INNER_R * Math.sin(CUP_THETA_START);
+  const rimMat = new THREE.MeshStandardMaterial({
+    color: rimColor,
+    roughness: 0.5,
+    metalness: 0.15,
+    emissive: rimColor,
+    emissiveIntensity: 0.25,
+  });
+  const rimMesh = new THREE.Mesh(
+    new THREE.TorusGeometry((outerRimR + innerRimR) / 2, ((outerRimR - innerRimR) / 2) * 1.4, 12, 48),
+    rimMat
+  );
+  rimMesh.rotation.y = Math.PI / 2;
+  rimMesh.position.x = (outerRimX + innerRimX) / 2;
+  group.add(rimMesh);
+
+  // trunk: axon/dendrite extending backward, away from the mouth, overlapping the cup so
+  // there's no seam where it meets the outer shell
+  const trunkGeo = new THREE.CylinderGeometry(1.3, 1.5, 6, 16);
+  trunkGeo.rotateZ(Math.PI / 2); // cylinder's default axis is Y; this makes it X instead
+  const trunkMesh = new THREE.Mesh(trunkGeo, outerMat);
+  trunkMesh.position.x = -openSign * (CUP_OUTER_R * 0.6 + 2.6);
+  group.add(trunkMesh);
+
+  group.userData.parts = [outerMesh, innerMesh, rimMesh, trunkMesh];
   return group;
 }
 
-const presynaptic = makeMembrane(0x3c5aa6);
+const presynaptic = buildCup(1, 0x5a78c8);
 presynaptic.position.x = -GAP_HALF_WIDTH;
 synapseGroup.add(presynaptic);
 
-const postsynaptic = makeMembrane(0x4a8a6a);
+const postsynaptic = buildCup(-1, 0x5a9a6e);
 postsynaptic.position.x = GAP_HALF_WIDTH;
 synapseGroup.add(postsynaptic);
 
-/* ---------- Receptors on postsynaptic membrane ---------- */
+/* ---------- Synaptic vesicles (presynaptic cup interior) ---------- */
 
-const receptorPositions = [
-  [0, 2.2, 1.5], [0, -1.8, 2.2], [0, 2.6, -1.8],
-  [0, -2.4, -1.2], [0, 0.4, 2.6], [0, -0.6, -2.6],
-];
+const vesicleShellMat = new THREE.MeshStandardMaterial({
+  color: 0x7a8fc2,
+  transparent: true,
+  opacity: 0.55,
+  roughness: 0.3,
+  metalness: 0.1,
+});
+const vesicleCoreMat = new THREE.MeshStandardMaterial({
+  color: 0xe8502f,
+  emissive: 0xc23a1a,
+  emissiveIntensity: 0.5,
+  roughness: 0.4,
+});
+
+function buildVesicle() {
+  const group = new THREE.Group();
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.28, 14, 14), vesicleShellMat);
+  group.add(shell);
+  const packCount = 5 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < packCount; i++) {
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), vesicleCoreMat);
+    const r = Math.random() * 0.16;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    core.position.set(
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.sin(phi) * Math.sin(theta),
+      r * Math.cos(phi)
+    );
+    group.add(core);
+  }
+  return group;
+}
+
+// local +X is "toward the mouth" (see buildCup's comment) — scattered through the clearance
+// envelope (radius < CUP_INNER_R - ~0.15), a couple pushed close to the mouth rim to read as
+// "docked" like the reference image
+const vesicles = [];
+[
+  [0.4, 0.9, 0.3], [0.7, -0.6, 0.8], [0.3, 1.1, -0.6], [0.9, 0.2, -0.9],
+  [1.3, 0.7, 0.2], [1.4, -0.5, -0.3], [0.6, -1.1, 0.4],
+].forEach(([x, y, z], i) => {
+  const v = buildVesicle();
+  v.position.set(x, y, z);
+  presynaptic.add(v);
+  vesicles.push({ group: v, baseY: y, phase: i * 1.3 });
+});
+
+/* ---------- Calcium channel (presynaptic, decorative) ---------- */
+
+const calciumChannelMat = new THREE.MeshStandardMaterial({
+  color: 0x3d6fd6,
+  emissive: 0x1a3a7a,
+  emissiveIntensity: 0.4,
+  roughness: 0.4,
+  metalness: 0.3,
+});
+const calciumChannel = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.55, 0.22), calciumChannelMat);
+calciumChannel.position.set(1.55, -1.35, 0.35);
+presynaptic.add(calciumChannel);
+
+/* ---------- Presynaptic cytoskeleton mesh (decorative) ---------- */
+
+const cytoskeletonMat = new THREE.MeshStandardMaterial({
+  color: 0xcfd4dc,
+  roughness: 0.8,
+  metalness: 0,
+});
+for (let i = 0; i < 9; i++) {
+  const start = new THREE.Vector3(0.1 + Math.random() * 0.3, -1.3 + Math.random() * 0.3, -0.6 + Math.random() * 1.2);
+  const mid = start.clone().add(new THREE.Vector3(0.5 + Math.random() * 0.4, 0.3 + Math.random() * 0.3, (Math.random() - 0.5) * 0.4));
+  const end = mid.clone().add(new THREE.Vector3(0.4 + Math.random() * 0.3, 0.2 + Math.random() * 0.2, (Math.random() - 0.5) * 0.3));
+  const curve = new THREE.CatmullRomCurve3([start, mid, end]);
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.025, 6, false), cytoskeletonMat);
+  presynaptic.add(tube);
+}
+
+/* ---------- Receptors + postsynaptic channels (postsynaptic cup interior wall) ---------- */
+// Ring-placement against the inner wall, in the SAME post-rotation local frame buildCup() bakes
+// into its geometry (local -X is "toward the mouth" for the postsynaptic cup, openSign=-1):
+// theta measured from the mouth pole (thetaStart = right at the rim, increasing = deeper into
+// the cavity), phi swept around the mouth axis to distribute slots in a ring facing the gap.
+// Receptors stay flat children of synapseGroup (not the cup group) so the existing particle
+// code's `p.targetReceptor.mesh.position` read keeps working in world space unchanged — this
+// formula bakes the postsynaptic cup's world position (and its lack of any rotation) in by hand.
+
+const RECEPTOR_THETA = CUP_THETA_START + 0.3;
+const RECEPTOR_R = CUP_INNER_R - 0.06;
+
+function wallPoint(theta, phi, radius) {
+  // local point in the post-rotateZ(+PI/2) frame (openSign=-1): see buildCup()'s derivation
+  return new THREE.Vector3(
+    -radius * Math.cos(theta),
+    radius * Math.sin(theta) * Math.cos(phi),
+    radius * Math.sin(theta) * Math.sin(phi)
+  );
+}
 
 const receptorMat = new THREE.MeshStandardMaterial({
   color: 0x9fe0b8,
@@ -427,14 +601,76 @@ const receptorMat = new THREE.MeshStandardMaterial({
   roughness: 0.4,
 });
 
-const receptors = receptorPositions.map(([x, y, z]) => {
-  const geo = new THREE.ConeGeometry(0.28, 0.7, 10);
+// umbrella/mushroom profile revolved around Y — one continuous Mesh (not a multi-part Group),
+// so the existing flash-decay code in animate() (`r.mesh.material...`) needs no changes; see
+// docs/synapse-visual-rebuild.md for why this matters
+const RECEPTOR_PROFILE = [
+  [0, 0], [0.05, 0], [0.06, 0.35], [0.05, 0.38], [0.22, 0.42], [0.30, 0.46], [0.28, 0.52], [0.15, 0.55], [0, 0.56],
+].map(([x, y]) => new THREE.Vector2(x, y));
+
+const receptors = Array.from({ length: 6 }, (_, i) => {
+  const phi = (i / 6) * Math.PI * 2 + 0.3;
+  const local = wallPoint(RECEPTOR_THETA, phi, RECEPTOR_R);
+  const worldPos = new THREE.Vector3(GAP_HALF_WIDTH + local.x, local.y, local.z);
+
+  const geo = new THREE.LatheGeometry(RECEPTOR_PROFILE, 16);
   const mesh = new THREE.Mesh(geo, receptorMat.clone());
-  mesh.rotation.z = Math.PI / 2;
-  mesh.position.set(GAP_HALF_WIDTH - 0.9, y, z);
+  mesh.position.copy(worldPos);
+  const inward = local.clone().normalize().multiplyScalar(-1);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), inward);
   synapseGroup.add(mesh);
   return { mesh, flashT: 0 };
 });
+
+const postsynapticChannelMat = new THREE.MeshStandardMaterial({
+  color: 0x9a7a4f,
+  roughness: 0.6,
+  metalness: 0.1,
+});
+for (let i = 0; i < 6; i++) {
+  const phi = (i / 6) * Math.PI * 2 + 0.3 + Math.PI / 6; // interleaved with the receptor slots
+  const local = wallPoint(RECEPTOR_THETA - 0.08, phi, RECEPTOR_R);
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.4, 10), postsynapticChannelMat);
+  mesh.position.set(GAP_HALF_WIDTH + local.x, local.y, local.z);
+  const inward = local.clone().normalize().multiplyScalar(-1);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), inward);
+  synapseGroup.add(mesh);
+}
+
+/* ---------- Postsynaptic fiber fan (decorative) ---------- */
+
+const fiberFanGroup = new THREE.Group();
+const fiberMat = new THREE.MeshStandardMaterial({
+  color: 0xb49fe0,
+  emissive: 0x6a4fa0,
+  emissiveIntensity: 0.25,
+  roughness: 0.6,
+});
+for (let i = 0; i < 13; i++) {
+  // local -X is the postsynaptic cup's mouth direction; fibers start near the back pole
+  // (+X-ish) and fan out toward the mouth rim — staggered start points, not one shared
+  // origin, to avoid z-fighting where they'd otherwise converge (see plan's gotcha list)
+  const start = new THREE.Vector3(1.2 + Math.random() * 0.3, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3);
+  const spreadPhi = (i / 13) * Math.PI * 2;
+  const spreadTheta = 1.0 + Math.random() * 0.4;
+  const tip = wallPoint(spreadTheta, spreadPhi, CUP_INNER_R * 0.95);
+  const mid = start.clone().lerp(tip, 0.5).add(new THREE.Vector3(0, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3));
+  const curve = new THREE.CatmullRomCurve3([start, mid, tip]);
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.02, 6, false), fiberMat);
+  fiberFanGroup.add(tube);
+}
+postsynaptic.add(fiberFanGroup);
+
+/* ---------- Interior lighting ---------- */
+// the original key/rim lights were tuned for a flat membrane face, not a deep concave cavity —
+// without these, the new interior detail (vesicles, receptors, fibers) reads flat/under-lit
+const presynapticInteriorLight = new THREE.PointLight(0xffcfa0, 12, 10);
+presynapticInteriorLight.position.set(-GAP_HALF_WIDTH + 2.2, 0.3, 0.3);
+synapseGroup.add(presynapticInteriorLight);
+
+const postsynapticInteriorLight = new THREE.PointLight(0xd0e0ff, 12, 10);
+postsynapticInteriorLight.position.set(GAP_HALF_WIDTH - 2.2, 0.3, 0.3);
+synapseGroup.add(postsynapticInteriorLight);
 
 /* ---------- Reuptake pump on presynaptic membrane ---------- */
 
