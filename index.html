@@ -111,7 +111,7 @@
       <p>Depression is linked to disrupted chemical signaling across the brain — particularly reduced activity of serotonin, a neurotransmitter tied to mood, energy, and motivation. Scroll in to see exactly what goes wrong at a single connection between two neurons.</p>
     </div>
   </div>
-  <div class="stage align-right">
+  <div class="stage align-left">
     <div class="stage-content" data-stage="1">
       <span class="stage-tag">Stage 2 · The Solution</span>
       <h2>This Pill Is the Solution</h2>
@@ -209,50 +209,18 @@ rimLight.position.set(0, -6, -10);
 scene.add(rimLight);
 
 /* ---------- Brain (Stage 0 overview) ---------- */
-// Loosely inspired by the sideways-profile silhouette in ref-images/side-brain.png —
-// only the shape/fold idea is reused, not that image's specific anatomy or labels.
+// Modeled on the sideways-profile reference in ref-images/side-brain.png: thick rounded
+// cortex ridges with deep narrow creases, a lateral sulcus separating a distinct temporal
+// lobe, and a finely-ridged cerebellum + brainstem tucked under the rear of the cerebrum.
 
-function buildBrain() {
-  const geo = new THREE.SphereGeometry(2.6, 96, 72); // higher resolution supports the finer fold passes below
-  geo.scale(1.5, 1.05, 0.85); // elongate front-to-back, squash depth for a side-profile read
-  const pos = geo.attributes.position;
-  const v = new THREE.Vector3();
+// shared palette across all three parts (cerebrum/cerebellum/brainstem) so they read as
+// one material family despite each having its own geometry/noise pass
+const BRAIN_BASE_PINK = new THREE.Color(0xe8799f);
+const BRAIN_DARK_ROSE = new THREE.Color(0x7a2748);
+const BRAIN_HIGHLIGHT_PINK = new THREE.Color(0xf6b4cd);
 
-  // vertex colors give the fold creases a darker rose shade and the ridges a lighter pink
-  // highlight, instead of one flat color across the whole brain
-  const basePink = new THREE.Color(0xe8799f);
-  const darkRose = new THREE.Color(0x7a2748);
-  const highlightPink = new THREE.Color(0xf6b4cd);
-  const colors = new Float32Array(pos.count * 3);
-  const c = new THREE.Color();
-
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i);
-    const len = v.length() || 1;
-    const nx = v.x / len, ny = v.y / len, nz = v.z / len;
-    // base layered sine/cosine passes suggest overlapping cortex folds (gyri/sulci)
-    const fold1 = Math.sin(v.x * 2.1 + v.y * 2.8) * Math.cos(v.z * 2.4) * 0.14;
-    const fold2 = Math.sin(v.y * 4.2 - v.z * 3.1 + v.x * 1.6) * 0.09;
-    // two extra higher-frequency, lower-amplitude passes add finer overlapping ridges on top
-    // of the base folds, for a denser, more organic surface without changing the overall shape
-    const fold3 = Math.sin(v.x * 5.3 - v.y * 4.7 + v.z * 3.9) * 0.05;
-    const fold4 = Math.cos(v.z * 6.4 + v.x * 3.4) * Math.sin(v.y * 5.5) * 0.04;
-    // a deeper centered crease along the top, loosely like the longitudinal fissure
-    const groove = -Math.exp(-(v.z * v.z) / 0.4) * Math.max(v.y, 0) * 0.22;
-    const d = fold1 + fold2 + fold3 + fold4 + groove;
-    pos.setXYZ(i, v.x + nx * d, v.y + ny * d, v.z + nz * d);
-
-    // negative d (a crease/groove) shades toward dark rose; positive d (a ridge) toward light pink
-    const shade = THREE.MathUtils.clamp(d / 0.2, -1, 1);
-    c.copy(basePink).lerp(shade < 0 ? darkRose : highlightPink, Math.abs(shade));
-    colors[i * 3] = c.r;
-    colors[i * 3 + 1] = c.g;
-    colors[i * 3 + 2] = c.b;
-  }
-  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
-
-  const mat = new THREE.MeshStandardMaterial({
+function brainMaterial() {
+  return new THREE.MeshStandardMaterial({
     vertexColors: true,
     color: 0xffffff,
     roughness: 0.6,
@@ -261,8 +229,136 @@ function buildBrain() {
     emissiveIntensity: 0.28,
     transparent: true, // fades out at the end of the zoom (stage 2), see animate()
   });
+}
 
-  return new THREE.Mesh(geo, mat);
+// shades each vertex by fold depth: creases (negative d) toward dark rose, ridges
+// (positive d) toward light pink, same convention used by every brain part below
+function shadeFoldColors(pos, dValues, shadeScale) {
+  const colors = new Float32Array(pos.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const shade = THREE.MathUtils.clamp(dValues[i] / shadeScale, -1, 1);
+    c.copy(BRAIN_BASE_PINK).lerp(shade < 0 ? BRAIN_DARK_ROSE : BRAIN_HIGHLIGHT_PINK, Math.abs(shade));
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+  return colors;
+}
+
+function buildCerebrum() {
+  const geo = new THREE.SphereGeometry(2.6, 96, 72); // higher resolution supports the finer fold passes below
+  geo.scale(1.5, 1.05, 0.85); // elongate front-to-back (+x = front, -x = back), squash depth for a side-profile read
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+  const dValues = new Float32Array(pos.count);
+
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const len = v.length() || 1;
+    const nx = v.x / len, ny = v.y / len, nz = v.z / len;
+    // base layered sine/cosine passes suggest overlapping cortex folds (gyri/sulci) —
+    // lower frequency + higher amplitude than before, for fewer, thicker, more legible ridges
+    const fold1 = Math.sin(v.x * 1.7 + v.y * 2.3) * Math.cos(v.z * 2.1) * 0.17;
+    const fold2 = Math.sin(v.y * 3.4 - v.z * 2.6 + v.x * 1.3) * 0.11;
+    // two extra higher-frequency, lower-amplitude passes add finer overlapping ridges on top
+    // of the base folds, for a denser, more organic surface without changing the overall shape
+    const fold3 = Math.sin(v.x * 5.3 - v.y * 4.7 + v.z * 3.9) * 0.045;
+    const fold4 = Math.cos(v.z * 6.4 + v.x * 3.4) * Math.sin(v.y * 5.5) * 0.035;
+    // a deeper centered crease along the top, loosely like the longitudinal fissure
+    const groove = -Math.exp(-(v.z * v.z) / 0.4) * Math.max(v.y, 0) * 0.22;
+
+    // lateral sulcus: a diagonal crease running down the front-lower side of the cortex,
+    // with a bulge just below it to pop out a distinct temporal lobe (the reference image's
+    // most visually distinct landmark that the old noise-only version had no equivalent of)
+    const sylvianAngle = -0.55;
+    const along = nx * Math.cos(sylvianAngle) + ny * Math.sin(sylvianAngle);
+    const across = -nx * Math.sin(sylvianAngle) + ny * Math.cos(sylvianAngle);
+    const fissureRun = THREE.MathUtils.smoothstep(along, -0.95, -0.35) *
+      (1 - THREE.MathUtils.smoothstep(along, 0.15, 0.55));
+    const sylvianFissure = -Math.exp(-((across - 0.02) ** 2) / 0.014) * fissureRun * 0.3;
+    const temporalLobeBulge = Math.exp(-((across - 0.26) ** 2) / 0.045) * fissureRun * 0.21;
+
+    let d = fold1 + fold2 + fold3 + fold4 + groove + sylvianFissure + temporalLobeBulge;
+    // sharpen creases relative to ridges: deepen negative displacement more than positive,
+    // so gyri read as rounded flat-topped ridges separated by narrow deep sulci (rope-like),
+    // instead of the smoother, all-over ripple look of symmetric sine noise
+    d = d >= 0 ? d * 0.9 : d * 1.55;
+
+    pos.setXYZ(i, v.x + nx * d, v.y + ny * d, v.z + nz * d);
+    dValues[i] = d;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(shadeFoldColors(pos, dValues, 0.25), 3));
+  geo.computeVertexNormals();
+  return new THREE.Mesh(geo, brainMaterial());
+}
+
+function buildCerebellum() {
+  // smaller, denser-ridged lobe tucked under the rear of the cerebrum — the tightly packed
+  // parallel striations here are what make a cerebellum instantly readable vs. the cerebrum's
+  // broad folds, per the reference image
+  const geo = new THREE.SphereGeometry(0.85, 48, 36);
+  geo.scale(1.1, 0.8, 1.2);
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+  const dValues = new Float32Array(pos.count);
+
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const len = v.length() || 1;
+    const nx = v.x / len, ny = v.y / len, nz = v.z / len;
+    // one dominant high-frequency pass (mostly along y) plus a finer cross pass, mimicking
+    // the cerebellum's tightly folded "arbor vitae" fan pattern
+    const ridge1 = Math.sin(v.y * 14 + v.x * 2.5) * 0.05;
+    const ridge2 = Math.sin(v.y * 22 - v.z * 4.5) * 0.022;
+    let d = ridge1 + ridge2;
+    d = d >= 0 ? d * 0.85 : d * 1.4;
+    pos.setXYZ(i, v.x + nx * d, v.y + ny * d, v.z + nz * d);
+    dValues[i] = d;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(shadeFoldColors(pos, dValues, 0.08), 3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, brainMaterial());
+  // positioned outside the cerebrum's ellipsoid surface (back/under/toward-camera) so it
+  // actually pokes out as a visible lobe instead of being swallowed inside the bigger mesh —
+  // verified against the live scene camera, not just the base ellipsoid math, since the fold
+  // noise/silhouette make "outside the surface" hard to eyeball from the equation alone
+  mesh.scale.set(1.5, 1.5, 1.5);
+  mesh.position.set(-2.15, -2.05, 0.75);
+  return mesh;
+}
+
+function buildBrainstem() {
+  const geo = new THREE.CylinderGeometry(0.22, 0.16, 0.9, 16);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xb35f78,
+    roughness: 0.65,
+    metalness: 0.03,
+    emissive: 0x7a2748,
+    emissiveIntensity: 0.2,
+    transparent: true,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.scale.set(1.6, 1.6, 1.6);
+  mesh.position.set(-1.6, -2.75, 0.5);
+  mesh.rotation.z = 0.12; // slight forward lean, matching the reference image's stem angle
+  return mesh;
+}
+
+function buildBrain() {
+  const group = new THREE.Group();
+  const cerebrum = buildCerebrum();
+  const cerebellum = buildCerebellum();
+  const brainstem = buildBrainstem();
+  group.add(cerebrum, cerebellum, brainstem);
+  // animate() fades/hides the whole brain by looping over these parts (each has its own
+  // material, so there's no single `.material` on the group to drive opacity through)
+  group.userData.parts = [cerebrum, cerebellum, brainstem];
+  return group;
+}
+
+function setBrainOpacity(o) {
+  brain.userData.parts.forEach((m) => { m.material.opacity = o; });
 }
 
 const brain = buildBrain();
@@ -336,7 +432,7 @@ const receptors = receptorPositions.map(([x, y, z]) => {
   const mesh = new THREE.Mesh(geo, receptorMat.clone());
   mesh.rotation.z = Math.PI / 2;
   mesh.position.set(GAP_HALF_WIDTH - 0.9, y, z);
-  scene.add(mesh);
+  synapseGroup.add(mesh);
   return { mesh, flashT: 0 };
 });
 
@@ -345,7 +441,7 @@ const receptors = receptorPositions.map(([x, y, z]) => {
 const pumpGroup = new THREE.Group();
 // offset must clear the membrane's center bulge peak (~0.5 + half-width 0.7 = 1.2), or the pump renders hidden inside the membrane mesh
 pumpGroup.position.set(-GAP_HALF_WIDTH + 1.6, 0, 0);
-scene.add(pumpGroup);
+synapseGroup.add(pumpGroup);
 
 const pumpRingMat = new THREE.MeshStandardMaterial({
   color: 0xffb066,
@@ -366,7 +462,49 @@ const pumpCore = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.5, 16), p
 pumpCore.rotation.z = Math.PI / 2;
 pumpGroup.add(pumpCore);
 
-/* ---------- SSRI molecule (hero-staged at Stage 1, later docks onto the pump) ---------- */
+/* ---------- SSRI pill (hero-staged at Stage 1), then the molecule it becomes ---------- */
+// Two distinct representations of the same traveling SSRI, swapped mid-flight (stage 2):
+// a real tablet matching ref-images/PILL.png while it's a "pill" in the bloodstream, crossfading
+// into the abstract blue "molecule" cluster once it reaches synapse scale and needs to dock onto
+// the pump — see the stage-2 branch in animate() for the actual transform.
+
+function buildPill() {
+  // a flattened capsule reads as a tablet/caplet: long stadium outline, thin in depth, gently
+  // domed faces — matching the ref image's shape far better than a true round gel capsule would
+  const geo = new THREE.CapsuleGeometry(0.42, 1.0, 8, 16);
+  geo.rotateZ(Math.PI / 2); // long axis along local X instead of the default Y
+  geo.scale(1, 1, 0.42); // flatten local Z (depth) for a tablet, not a round capsule
+
+  // faint darker score line at the long-axis midpoint, echoing the ref image's pressed center
+  // groove, plus a little vertex-color variation so the surface isn't perfectly flat-shaded
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const base = new THREE.Color(0xd8e2a6);
+  const dark = new THREE.Color(0xb3c07c);
+  const c = new THREE.Color();
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const scoreLine = Math.exp(-(v.x * v.x) / 0.0025);
+    c.copy(base).lerp(dark, scoreLine * 0.7);
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals(); // the non-uniform scale above invalidates the capsule's baked normals
+
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    color: 0xffffff,
+    roughness: 0.75,
+    metalness: 0.02,
+    emissive: 0xc7d48f,
+    emissiveIntensity: 0.12,
+    transparent: true,
+  });
+  return new THREE.Mesh(geo, mat);
+}
 
 function buildSSRI() {
   const group = new THREE.Group();
@@ -376,25 +514,33 @@ function buildSSRI() {
     emissiveIntensity: 0.6,
     roughness: 0.25,
     metalness: 0.2,
+    transparent: true, // faded in during the stage-2 pill→molecule transform, see animate()
   });
-  const core = new THREE.Mesh(new THREE.SphereGeometry(0.42, 20, 20), mat);
+  // sized up from an earlier smaller version — at this distance from the camera the pill needs
+  // real presence to read clearly as a "hero" object during stage 1, not just a small dot
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.65, 20, 20), mat);
   group.add(core);
-  [[0.5, 0.25, 0], [-0.5, 0.25, 0], [0, -0.4, 0.4]].forEach(([x, y, z]) => {
-    const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 14), mat);
+  [[0.75, 0.38, 0], [-0.75, 0.38, 0], [0, -0.6, 0.6]].forEach(([x, y, z]) => {
+    const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 14), mat);
     lobe.position.set(x, y, z);
     group.add(lobe);
   });
+  group.userData.material = mat; // shared by every child mesh; see animate()'s opacity fade
   return group;
 }
+
+const pillGroup = buildPill();
+pillGroup.visible = false;
+scene.add(pillGroup);
 
 const ssriGroup = buildSSRI();
 ssriGroup.visible = false;
 scene.add(ssriGroup);
 
-// Stage 1: the pill slides in from off-screen left to a left-side rest spot, clearly separated
+// Stage 1: the pill slides in from off-screen right to a right-side rest spot, clearly separated
 // (both left/right and foreground/background) from the brain at (2, 0.4, -5), so it never covers it.
-const SSRI_ENTER_START = new THREE.Vector3(-14, 1.5, 9);
-const SSRI_HERO_REST = new THREE.Vector3(-4, 1.2, 9);
+const SSRI_ENTER_START = new THREE.Vector3(16, 1.5, 9);
+const SSRI_HERO_REST = new THREE.Vector3(5, 1.2, 9);
 const SSRI_DOCKED = pumpGroup.position.clone().add(new THREE.Vector3(0.9, 0, 0));
 
 // a short fading trail of dots behind the pill during its Stage 2 flight, for extra motion polish
@@ -439,7 +585,7 @@ function spawnParticle(p) {
 
 for (let i = 0; i < PARTICLE_COUNT; i++) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), serotoninMat);
-  scene.add(mesh);
+  synapseGroup.add(mesh);
   const p = { mesh, progress: 0, speed: 0.3, recalled: false, delay: 0 };
   spawnParticle(p);
   p.delay = Math.random() * 4; // stagger initial spawns
@@ -515,13 +661,17 @@ function animate() {
   // and stays hidden from stage 3 onward so it doesn't sit behind/overlap every later stage's text
   if (state.stageIndex < 2) {
     brain.visible = true;
-    brain.material.opacity = 1;
+    setBrainOpacity(1);
   } else if (state.stageIndex === 2) {
     brain.visible = true;
-    brain.material.opacity = 1 - easeInOut(state.stageT);
+    setBrainOpacity(1 - easeInOut(state.stageT));
   } else {
     brain.visible = false;
   }
+
+  // the synapse (membranes/pump/receptors/particles) stays fully hidden through stages 0-1 (brain,
+  // pill hero) and only appears once the stage-2 zoom begins, revealing it as the camera closes in
+  synapseGroup.visible = state.stageIndex >= 2;
 
   // pump spins while active, freezes when blocked
   if (state.pumpActive) {
@@ -530,22 +680,45 @@ function animate() {
   pumpRingMat.emissiveIntensity = state.pumpBlocked ? 0.1 : 0.55 + Math.sin(elapsed * 4) * 0.2;
   pumpRingMat.color.set(state.pumpBlocked ? 0x666666 : 0xffb066);
 
-  // SSRI molecule: slides in from off-screen left during stage 1, rests on the left, flies to the
-  // pump during stage 2 (in sync with the camera zoom below), then stays docked from stage 3 onward.
+  // SSRI travels one shared flight path across three visual phases: a tablet (stage 1, matching
+  // ref-images/PILL.png) slides in from off-screen right and rests; during stage 2's flight to the
+  // pump it transforms into the blue molecule cluster partway through (morphT below), arriving
+  // already transformed; from stage 3 onward it stays docked as the molecule, jamming the pump.
   // The pump only visually "jams" later, once state.pumpBlocked flips true in the treatment stage —
-  // the pill arriving early just pre-positions it.
+  // the molecule arriving early just pre-positions it.
   if (state.stageIndex >= 1) {
-    ssriGroup.visible = true;
-    ssriGroup.rotation.y = elapsed * 0.6;
-
+    const flightPos = new THREE.Vector3();
     if (state.stageIndex === 1) {
-      ssriGroup.position.lerpVectors(SSRI_ENTER_START, SSRI_HERO_REST, easeInOut(state.stageT));
+      // slide completes within the first ~40% of this stage's scroll range, so the pill is
+      // clearly visible and resting for most of the stage instead of still mid-entrance
+      const slideT = easeInOut(Math.min(state.stageT * 2.5, 1));
+      flightPos.lerpVectors(SSRI_ENTER_START, SSRI_HERO_REST, slideT);
     } else if (state.stageIndex === 2) {
-      ssriGroup.position.lerpVectors(SSRI_HERO_REST, SSRI_DOCKED, easeInOut(state.stageT));
+      flightPos.lerpVectors(SSRI_HERO_REST, SSRI_DOCKED, easeInOut(state.stageT));
     } else {
-      ssriGroup.position.copy(SSRI_DOCKED);
+      flightPos.copy(SSRI_DOCKED);
     }
+
+    // morphT: 0 = pure pill, 1 = pure molecule. Held flat at the flight's start/end so each shape
+    // gets a clear, non-transitioning moment on screen; the swap itself happens in the middle
+    // third of stage 2's flight.
+    const morphT = state.stageIndex < 2 ? 0
+      : state.stageIndex > 2 ? 1
+      : THREE.MathUtils.smoothstep(state.stageT, 0.35, 0.7);
+
+    pillGroup.visible = morphT < 1;
+    pillGroup.position.copy(flightPos);
+    pillGroup.rotation.set(elapsed * 0.5, elapsed * 0.6, 0); // tumbles, distinct from the molecule's flat spin
+    pillGroup.scale.setScalar(1 - morphT * 0.4); // shrinks slightly as it dissolves into the molecule
+    pillGroup.material.opacity = 1 - morphT;
+
+    ssriGroup.visible = morphT > 0;
+    ssriGroup.position.copy(flightPos);
+    ssriGroup.rotation.y = elapsed * 0.6;
+    ssriGroup.scale.setScalar(0.5 + morphT * 0.5); // condenses in from half size as the pill dissolves
+    ssriGroup.userData.material.opacity = morphT;
   } else {
+    pillGroup.visible = false;
     ssriGroup.visible = false;
   }
 
