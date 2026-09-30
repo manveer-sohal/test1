@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>How SSRIs Treat Depression</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  :root {
+    color-scheme: dark;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0a0e17;
+    color: #e8eaf0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    overflow-x: hidden;
+  }
+  #scene-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    z-index: 0;
+  }
+  #scroll-track {
+    position: relative;
+    z-index: 1;
+    height: 700vh;
+  }
+  .stage {
+    height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    padding: 14vh 8vw 0;
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+  .stage.align-right {
+    justify-content: flex-end;
+  }
+  .stage.align-left {
+    justify-content: flex-start;
+  }
+  .stage-content {
+    max-width: 400px;
+    background: rgba(10, 14, 23, 0.72);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 28px 32px;
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .stage-content.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .stage-content h2 {
+    margin: 0 0 12px 0;
+    font-size: 1.4rem;
+    letter-spacing: 0.01em;
+  }
+  .stage-content p {
+    margin: 0;
+    line-height: 1.55;
+    font-size: 0.98rem;
+    color: #c7cbd6;
+  }
+  .stage-tag {
+    display: inline-block;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8fa3ff;
+    margin-bottom: 8px;
+  }
+  #scroll-hint {
+    position: fixed;
+    bottom: 6vh;
+    left: 0;
+    width: 100vw;
+    text-align: center;
+    font-size: 0.85rem;
+    color: #6b7180;
+    z-index: 2;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+    animation: bob 1.8s ease-in-out infinite;
+  }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(8px); }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene-canvas"></canvas>
+
+<div id="scroll-hint">↓ scroll to begin ↓</div>
+
+<div id="scroll-track">
+  <div class="stage align-left">
+    <div class="stage-content" data-stage="0">
+      <span class="stage-tag">Stage 1 · The Depressed Brain</span>
+      <h2>Depression Changes Brain Chemistry</h2>
+      <p>Depression is linked to disrupted chemical signaling across the brain — particularly reduced activity of serotonin, a neurotransmitter tied to mood, energy, and motivation. Scroll in to see exactly what goes wrong at a single connection between two neurons.</p>
+    </div>
+  </div>
+  <div class="stage align-right">
+    <div class="stage-content" data-stage="1">
+      <span class="stage-tag">Stage 2 · The Solution</span>
+      <h2>This Pill Is the Solution</h2>
+      <p>Selective Serotonin Reuptake Inhibitors (SSRIs) are the most common medication for depression. Rather than adding more serotonin, they change how an existing signal gets recycled at the synapse — as you're about to see up close.</p>
+    </div>
+  </div>
+  <div class="stage align-left">
+    <div class="stage-content" data-stage="2">
+      <span class="stage-tag">Stage 3 · Delivery</span>
+      <h2>Into the Brain</h2>
+      <p>The pill dissolves and enters the bloodstream, traveling all the way down to a single connection between two neurons — the synapse you're about to see up close.</p>
+    </div>
+  </div>
+  <div class="stage align-left">
+    <div class="stage-content" data-stage="3">
+      <span class="stage-tag">Stage 4 · Normal Signaling</span>
+      <h2>Serotonin Crosses the Gap</h2>
+      <p>A presynaptic neuron releases serotonin into the synaptic gap. The molecules drift across and bind to receptors on the neighboring neuron, carrying the "feel good" signal forward.</p>
+    </div>
+  </div>
+  <div class="stage align-right">
+    <div class="stage-content" data-stage="4">
+      <span class="stage-tag">Stage 5 · Depression</span>
+      <h2>The Reuptake Pump Intervenes</h2>
+      <p>A reuptake pump on the presynaptic neuron rapidly reabsorbs serotonin before it can reach the other side. Less signal gets through — contributing to the mood and energy symptoms of depression.</p>
+    </div>
+  </div>
+  <div class="stage align-right">
+    <div class="stage-content" data-stage="5">
+      <span class="stage-tag">Stage 6 · Treatment</span>
+      <h2>An SSRI Blocks the Pump</h2>
+      <p>A Selective Serotonin Reuptake Inhibitor (SSRI) molecule enters the gap and docks directly onto the reuptake pump, physically jamming it and stopping the early reabsorption.</p>
+    </div>
+  </div>
+  <div class="stage align-left">
+    <div class="stage-content" data-stage="6">
+      <span class="stage-tag">Stage 7 · Restored Signaling</span>
+      <h2>Serotonin Lingers &amp; Signals</h2>
+      <p>With the pump blocked, serotonin stays in the gap far longer, giving it time to reach and activate many more receptors — restoring healthier mood signaling over time.</p>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+
+/* ---------- Scene / Camera / Renderer ---------- */
+
+const canvas = document.getElementById("scene-canvas");
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0a0e17, 0.012);
+
+const camera = new THREE.PerspectiveCamera(
+  50,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  200
+);
+// Two camera keyframes: a wide establishing shot (stages 0-1, brain + pill hero) and the close
+// synapse shot already established/verified in Slice 1 (stages 3+). Stage 2 lerps between them.
+const CAMERA_WIDE = { pos: new THREE.Vector3(0, 2.2, 24), lookAt: new THREE.Vector3(0, 0, 0) };
+const CAMERA_CLOSE = { pos: new THREE.Vector3(0, 1.2, 15), lookAt: new THREE.Vector3(0, 0, 0) };
+
+camera.position.copy(CAMERA_WIDE.pos);
+camera.lookAt(CAMERA_WIDE.lookAt);
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ---------- Lighting ---------- */
+
+scene.add(new THREE.AmbientLight(0x404868, 1.2));
+
+const keyLight = new THREE.PointLight(0x88aaff, 60, 60);
+keyLight.position.set(0, 8, 10);
+scene.add(keyLight);
+
+const rimLight = new THREE.PointLight(0xff8866, 20, 40);
+rimLight.position.set(0, -6, -10);
+scene.add(rimLight);
+
+/* ---------- Brain (Stage 0 overview) ---------- */
+// Loosely inspired by the sideways-profile silhouette in ref-images/side-brain.png —
+// only the shape/fold idea is reused, not that image's specific anatomy or labels.
+
+function buildBrain() {
+  const geo = new THREE.SphereGeometry(2.6, 96, 72); // higher resolution supports the finer fold passes below
+  geo.scale(1.5, 1.05, 0.85); // elongate front-to-back, squash depth for a side-profile read
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+
+  // vertex colors give the fold creases a darker rose shade and the ridges a lighter pink
+  // highlight, instead of one flat color across the whole brain
+  const basePink = new THREE.Color(0xe8799f);
+  const darkRose = new THREE.Color(0x7a2748);
+  const highlightPink = new THREE.Color(0xf6b4cd);
+  const colors = new Float32Array(pos.count * 3);
+  const c = new THREE.Color();
+
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const len = v.length() || 1;
+    const nx = v.x / len, ny = v.y / len, nz = v.z / len;
+    // base layered sine/cosine passes suggest overlapping cortex folds (gyri/sulci)
+    const fold1 = Math.sin(v.x * 2.1 + v.y * 2.8) * Math.cos(v.z * 2.4) * 0.14;
+    const fold2 = Math.sin(v.y * 4.2 - v.z * 3.1 + v.x * 1.6) * 0.09;
+    // two extra higher-frequency, lower-amplitude passes add finer overlapping ridges on top
+    // of the base folds, for a denser, more organic surface without changing the overall shape
+    const fold3 = Math.sin(v.x * 5.3 - v.y * 4.7 + v.z * 3.9) * 0.05;
+    const fold4 = Math.cos(v.z * 6.4 + v.x * 3.4) * Math.sin(v.y * 5.5) * 0.04;
+    // a deeper centered crease along the top, loosely like the longitudinal fissure
+    const groove = -Math.exp(-(v.z * v.z) / 0.4) * Math.max(v.y, 0) * 0.22;
+    const d = fold1 + fold2 + fold3 + fold4 + groove;
+    pos.setXYZ(i, v.x + nx * d, v.y + ny * d, v.z + nz * d);
+
+    // negative d (a crease/groove) shades toward dark rose; positive d (a ridge) toward light pink
+    const shade = THREE.MathUtils.clamp(d / 0.2, -1, 1);
+    c.copy(basePink).lerp(shade < 0 ? darkRose : highlightPink, Math.abs(shade));
+    colors[i * 3] = c.r;
+    colors[i * 3 + 1] = c.g;
+    colors[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    color: 0xffffff,
+    roughness: 0.6,
+    metalness: 0.03,
+    emissive: 0xd94f7c,
+    emissiveIntensity: 0.28,
+    transparent: true, // fades out at the end of the zoom (stage 2), see animate()
+  });
+
+  return new THREE.Mesh(geo, mat);
+}
+
+const brain = buildBrain();
+brain.position.set(2, 0.4, -5);
+brain.rotation.y = -0.35; // presents a mostly-sideways profile to the camera
+scene.add(brain);
+
+const brainLight = new THREE.PointLight(0xffc2d6, 40, 30);
+brainLight.position.set(2, 3, 2);
+scene.add(brainLight);
+
+// Everything belonging to the synapse (membranes, pump, receptors, particles) lives in this group
+// so it can be hidden as a single unit during the brain/pill stages (0-1) and revealed during the
+// stage-2 zoom — otherwise these objects sit at world x=-6/+6, well within the wide establishing
+// shot's frustum, and show through behind the brain/pill even before the zoom.
+const synapseGroup = new THREE.Group();
+scene.add(synapseGroup);
+
+/* ---------- Membranes ---------- */
+
+const GAP_HALF_WIDTH = 6;
+
+function makeMembrane(color) {
+  const group = new THREE.Group();
+  const geo = new THREE.BoxGeometry(1.4, 8, 8, 1, 12, 12);
+  // bulge the membrane slightly for an organic feel
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const bulge = Math.cos((y / 8) * Math.PI * 0.9) * Math.cos((z / 8) * Math.PI * 0.9);
+    pos.setX(i, pos.getX(i) + bulge * 0.5);
+  }
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.55,
+    metalness: 0.1,
+    emissive: color,
+    emissiveIntensity: 0.08,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  group.add(mesh);
+  return group;
+}
+
+const presynaptic = makeMembrane(0x3c5aa6);
+presynaptic.position.x = -GAP_HALF_WIDTH;
+synapseGroup.add(presynaptic);
+
+const postsynaptic = makeMembrane(0x4a8a6a);
+postsynaptic.position.x = GAP_HALF_WIDTH;
+synapseGroup.add(postsynaptic);
+
+/* ---------- Receptors on postsynaptic membrane ---------- */
+
+const receptorPositions = [
+  [0, 2.2, 1.5], [0, -1.8, 2.2], [0, 2.6, -1.8],
+  [0, -2.4, -1.2], [0, 0.4, 2.6], [0, -0.6, -2.6],
+];
+
+const receptorMat = new THREE.MeshStandardMaterial({
+  color: 0x9fe0b8,
+  emissive: 0x113322,
+  emissiveIntensity: 0.4,
+  roughness: 0.4,
+});
+
+const receptors = receptorPositions.map(([x, y, z]) => {
+  const geo = new THREE.ConeGeometry(0.28, 0.7, 10);
+  const mesh = new THREE.Mesh(geo, receptorMat.clone());
+  mesh.rotation.z = Math.PI / 2;
+  mesh.position.set(GAP_HALF_WIDTH - 0.9, y, z);
+  scene.add(mesh);
+  return { mesh, flashT: 0 };
+});
+
+/* ---------- Reuptake pump on presynaptic membrane ---------- */
+
+const pumpGroup = new THREE.Group();
+// offset must clear the membrane's center bulge peak (~0.5 + half-width 0.7 = 1.2), or the pump renders hidden inside the membrane mesh
+pumpGroup.position.set(-GAP_HALF_WIDTH + 1.6, 0, 0);
+scene.add(pumpGroup);
+
+const pumpRingMat = new THREE.MeshStandardMaterial({
+  color: 0xffb066,
+  emissive: 0x663300,
+  emissiveIntensity: 0.5,
+  roughness: 0.35,
+  metalness: 0.3,
+});
+const pumpRing = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.22, 16, 32), pumpRingMat);
+pumpRing.rotation.y = Math.PI / 2;
+pumpGroup.add(pumpRing);
+
+const pumpCoreMat = new THREE.MeshStandardMaterial({
+  color: 0x222834,
+  roughness: 0.6,
+});
+const pumpCore = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.5, 16), pumpCoreMat);
+pumpCore.rotation.z = Math.PI / 2;
+pumpGroup.add(pumpCore);
+
+/* ---------- SSRI molecule (hero-staged at Stage 1, later docks onto the pump) ---------- */
+
+function buildSSRI() {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x5ad1ff,
+    emissive: 0x0d3a4a,
+    emissiveIntensity: 0.6,
+    roughness: 0.25,
+    metalness: 0.2,
+  });
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.42, 20, 20), mat);
+  group.add(core);
+  [[0.5, 0.25, 0], [-0.5, 0.25, 0], [0, -0.4, 0.4]].forEach(([x, y, z]) => {
+    const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 14), mat);
+    lobe.position.set(x, y, z);
+    group.add(lobe);
+  });
+  return group;
+}
+
+const ssriGroup = buildSSRI();
+ssriGroup.visible = false;
+scene.add(ssriGroup);
+
+// Stage 1: the pill slides in from off-screen left to a left-side rest spot, clearly separated
+// (both left/right and foreground/background) from the brain at (2, 0.4, -5), so it never covers it.
+const SSRI_ENTER_START = new THREE.Vector3(-14, 1.5, 9);
+const SSRI_HERO_REST = new THREE.Vector3(-4, 1.2, 9);
+const SSRI_DOCKED = pumpGroup.position.clone().add(new THREE.Vector3(0.9, 0, 0));
+
+// a short fading trail of dots behind the pill during its Stage 2 flight, for extra motion polish
+const TRAIL_LENGTH = 6;
+const trailMeshes = [];
+for (let i = 0; i < TRAIL_LENGTH; i++) {
+  const trailMat = new THREE.MeshStandardMaterial({
+    color: 0x5ad1ff,
+    emissive: 0x5ad1ff,
+    emissiveIntensity: 0.8,
+    transparent: true,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), trailMat);
+  mesh.visible = false;
+  scene.add(mesh);
+  trailMeshes.push(mesh);
+}
+const trailHistory = [];
+
+/* ---------- Serotonin particles ---------- */
+
+const serotoninMat = new THREE.MeshStandardMaterial({
+  color: 0xffa74a,
+  emissive: 0xff6a00,
+  emissiveIntensity: 0.9,
+  roughness: 0.3,
+});
+
+const PARTICLE_COUNT = 22;
+const particles = [];
+
+function spawnParticle(p) {
+  p.mesh.position.set(-GAP_HALF_WIDTH + 1.1, (Math.random() - 0.5) * 4.5, (Math.random() - 0.5) * 4.5);
+  p.progress = 0;
+  p.speed = 0.25 + Math.random() * 0.2;
+  p.recalled = false;
+  p.recallPoint = 0.3 + Math.random() * 0.25;
+  p.targetReceptor = receptors[Math.floor(Math.random() * receptors.length)];
+  p.mesh.visible = true;
+  p.delay = Math.random() * 1.2;
+}
+
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), serotoninMat);
+  scene.add(mesh);
+  const p = { mesh, progress: 0, speed: 0.3, recalled: false, delay: 0 };
+  spawnParticle(p);
+  p.delay = Math.random() * 4; // stagger initial spawns
+  particles.push(p);
+}
+
+/* ---------- Stage state (driven by scroll) ---------- */
+
+const state = {
+  stageIndex: 0,
+  stageT: 0,
+  pumpActive: false,  // true while pump is reabsorbing (depression stage)
+  pumpBlocked: false, // true once SSRI has docked (treatment stage onward)
+};
+
+const stageContents = Array.from(document.querySelectorAll(".stage-content"));
+const scrollHintEl = document.getElementById("scroll-hint");
+const scrollTrack = document.getElementById("scroll-track");
+
+function onScroll() {
+  const trackHeight = scrollTrack.offsetHeight - window.innerHeight;
+  const scrollY = window.scrollY;
+  const overall = Math.min(Math.max(scrollY / trackHeight, 0), 1);
+
+  const stageCount = 7;
+  let stageIndex = Math.min(Math.floor(overall * stageCount), stageCount - 1);
+  let stageT = overall * stageCount - stageIndex;
+
+  state.stageIndex = stageIndex;
+  state.stageT = stageT;
+
+  // Pump behavior: calm through stages 0-3 (brain intro, pill hero, delivery/zoom, normal signaling),
+  // active in stage 4 (depression), blocked partway through stage 5 (treatment), stays blocked in stage 6 (restored)
+  if (stageIndex <= 3) {
+    state.pumpActive = false;
+    state.pumpBlocked = false;
+  } else if (stageIndex === 4) {
+    state.pumpActive = true; // depression stage: pump reabsorbing
+    state.pumpBlocked = false;
+  } else if (stageIndex === 5) {
+    state.pumpActive = stageT < 0.6; // pump gets blocked partway through the treatment stage
+    state.pumpBlocked = stageT >= 0.6;
+  } else {
+    state.pumpActive = false;
+    state.pumpBlocked = true;
+  }
+
+  // scroll hint fades out as soon as the user starts scrolling
+  scrollHintEl.style.opacity = overall < 0.02 ? 1 : 0;
+
+  // text overlays: visible while its own stage is active
+  stageContents.forEach((el, i) => {
+    el.classList.toggle("visible", i === stageIndex);
+  });
+}
+
+window.addEventListener("scroll", onScroll);
+onScroll();
+
+/* ---------- Animation loop ---------- */
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const elapsed = clock.elapsedTime;
+
+  // brain idles with a slow continuous spin, independent of scroll/stage
+  brain.rotation.y += dt * 0.15;
+
+  // brain dissolves away as the stage-2 zoom finishes (camera has now passed into the synapse),
+  // and stays hidden from stage 3 onward so it doesn't sit behind/overlap every later stage's text
+  if (state.stageIndex < 2) {
+    brain.visible = true;
+    brain.material.opacity = 1;
+  } else if (state.stageIndex === 2) {
+    brain.visible = true;
+    brain.material.opacity = 1 - easeInOut(state.stageT);
+  } else {
+    brain.visible = false;
+  }
+
+  // pump spins while active, freezes when blocked
+  if (state.pumpActive) {
+    pumpRing.rotation.x += dt * 4;
+  }
+  pumpRingMat.emissiveIntensity = state.pumpBlocked ? 0.1 : 0.55 + Math.sin(elapsed * 4) * 0.2;
+  pumpRingMat.color.set(state.pumpBlocked ? 0x666666 : 0xffb066);
+
+  // SSRI molecule: slides in from off-screen left during stage 1, rests on the left, flies to the
+  // pump during stage 2 (in sync with the camera zoom below), then stays docked from stage 3 onward.
+  // The pump only visually "jams" later, once state.pumpBlocked flips true in the treatment stage —
+  // the pill arriving early just pre-positions it.
+  if (state.stageIndex >= 1) {
+    ssriGroup.visible = true;
+    ssriGroup.rotation.y = elapsed * 0.6;
+
+    if (state.stageIndex === 1) {
+      ssriGroup.position.lerpVectors(SSRI_ENTER_START, SSRI_HERO_REST, easeInOut(state.stageT));
+    } else if (state.stageIndex === 2) {
+      ssriGroup.position.lerpVectors(SSRI_HERO_REST, SSRI_DOCKED, easeInOut(state.stageT));
+    } else {
+      ssriGroup.position.copy(SSRI_DOCKED);
+    }
+  } else {
+    ssriGroup.visible = false;
+  }
+
+  // pill flight trail: only during stage 2's flight, a few fading dots mark its recent path
+  if (state.stageIndex === 2) {
+    trailHistory.unshift(ssriGroup.position.clone());
+    if (trailHistory.length > TRAIL_LENGTH) trailHistory.length = TRAIL_LENGTH;
+    trailMeshes.forEach((mesh, i) => {
+      const histPos = trailHistory[i];
+      if (histPos) {
+        const t = 1 - i / TRAIL_LENGTH;
+        mesh.visible = true;
+        mesh.position.copy(histPos);
+        mesh.scale.setScalar(t * 0.7);
+        mesh.material.opacity = t * 0.5;
+      } else {
+        mesh.visible = false;
+      }
+    });
+  } else {
+    trailHistory.length = 0;
+    trailMeshes.forEach((mesh) => { mesh.visible = false; });
+  }
+
+  // serotonin particles
+  particles.forEach((p) => {
+    if (p.delay > 0) {
+      p.delay -= dt;
+      p.mesh.visible = false;
+      return;
+    }
+    p.mesh.visible = true;
+    p.progress += dt * p.speed;
+
+    const startX = -GAP_HALF_WIDTH + 1.1;
+
+    if (state.pumpActive && !p.recalled && p.progress >= p.recallPoint) {
+      p.recalled = true;
+    }
+
+    if (p.recalled) {
+      // pulled back toward the pump and despawned — slowed from an earlier 2.2x so the
+      // "grabbed back" motion reads clearly instead of snapping almost instantly
+      const backProgress = (p.progress - p.recallPoint) * 1.3;
+      const fromPos = new THREE.Vector3(
+        startX + p.recallPoint * (GAP_HALF_WIDTH * 2 - 2.2),
+        p.mesh.position.y,
+        p.mesh.position.z
+      );
+      p.mesh.position.lerpVectors(fromPos, pumpGroup.position, Math.min(backProgress, 1));
+      p.mesh.scale.setScalar(Math.max(1 - backProgress, 0.05));
+      if (backProgress >= 1) spawnParticle(p);
+      return;
+    }
+
+    if (p.progress >= 1) {
+      // reached receptor: flash then respawn
+      const r = p.targetReceptor;
+      r.flashT = 1;
+      spawnParticle(p);
+      return;
+    }
+
+    const targetPos = p.targetReceptor.mesh.position;
+    const startPos = new THREE.Vector3(startX, p.mesh.position.y, p.mesh.position.z);
+    p.mesh.position.lerpVectors(startPos, targetPos, p.progress);
+    p.mesh.scale.setScalar(1);
+  });
+
+  // receptor flash decay
+  receptors.forEach((r) => {
+    if (r.flashT > 0) {
+      r.flashT = Math.max(r.flashT - dt * 1.5, 0);
+    }
+    r.mesh.material.emissiveIntensity = 0.4 + r.flashT * 2.5;
+    r.mesh.material.color.set(r.flashT > 0.05 ? 0xffffff : 0x9fe0b8);
+  });
+
+  // camera: wide establishing shot through stages 0-1, zooms to the close synapse shot during stage 2
+  // (in sync with the pill's flight above), stays on the close shot from stage 3 onward
+  let camPos, camLookAt;
+  if (state.stageIndex <= 1) {
+    camPos = CAMERA_WIDE.pos;
+    camLookAt = CAMERA_WIDE.lookAt;
+  } else if (state.stageIndex === 2) {
+    const zoomT = easeInOut(state.stageT);
+    camPos = new THREE.Vector3().lerpVectors(CAMERA_WIDE.pos, CAMERA_CLOSE.pos, zoomT);
+    camLookAt = new THREE.Vector3().lerpVectors(CAMERA_WIDE.lookAt, CAMERA_CLOSE.lookAt, zoomT);
+  } else {
+    camPos = CAMERA_CLOSE.pos;
+    camLookAt = CAMERA_CLOSE.lookAt;
+  }
+  camera.position.set(camPos.x, camPos.y + Math.sin(elapsed * 0.3) * 0.15, camPos.z); // gentle idle bob
+  camera.lookAt(camLookAt);
+
+  renderer.render(scene, camera);
+}
+
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+animate();
+</script>
+
+</body>
+</html>
